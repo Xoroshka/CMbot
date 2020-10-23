@@ -1,4 +1,5 @@
 /target
+/database
 *.key
 *.pem
 *.db3

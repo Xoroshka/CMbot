@@ -5,14 +5,15 @@ use telegram_types::bot::methods;
 use telegram_types::bot::types;
 use warp::Filter;
 
-pub(crate) mod tg_api;
+pub(crate) mod chat;
 pub(crate) mod graph_ql;
-pub(crate) mod storage;
+pub(crate) mod old_storage;
+mod storage;
 
 #[tokio::main]
 async fn main() {
     let token = env::var("TG_BOT_TOKEN").expect("env var TG_BOT_TOKEN not set");
-    let db = DataBase::custom_init();
+    let db = DataBase::open();
     let hello = warp::post()
         .and(warp::path(token))
         .and(warp::body::json())
@@ -21,16 +22,14 @@ async fn main() {
             // eprintln!("Get Update");
             match update.content {
                 types::UpdateContent::Message(msg) => {
-                    let answ = tg_api::UpdateReply {
-                        method: tg_api::ApiMethod::SendMessage,
+                    let answ = chat::UpdateReply {
+                        method: chat::ApiMethod::SendMessage,
                         json: methods::SendMessage::new(
                             methods::ChatTarget::id(msg.chat.id.0),
                             "Hello",
                         ),
                     };
-                    // eprintln!("Send msg");
-                    // eprintln!("MSG:\n{}", serde_json::to_string(&answ).unwrap());
-                    let pr = storage::Proceeds {
+                    let pr = old_storage::Proceeds {
                         id: 0,
                         amount: 10000,
                         date: chrono::Local::now(),
@@ -63,3 +62,5 @@ async fn main() {
 fn with_db(db: storage::DataBase) -> impl Filter<Extract = (storage::DataBase,), Error = std::convert::Infallible> + Clone {
     warp::any().map(move || db.clone())
 }
+
+
