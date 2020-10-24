@@ -1,11 +1,10 @@
 use chrono::{Date, DateTime, Local, TimeZone};
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 #[derive(Clone)]
 pub struct DataBase {
     sled: sled::Db,
 }
-
 
 impl DataBase {
     pub fn open() -> Self {
@@ -26,15 +25,26 @@ impl DataBase {
         DataBase { sled }
     }
 
-    pub fn tree(&self, t: Tree) -> sled::Result<sled::Tree> {
-        self.sled.open_tree([t as u8])
+    pub fn get_chat(&self, id: i64) -> Option<Chat> {
+        self.tree(Tree::Chats)
+            .get(Chat::key(id))
+            .unwrap()
+            .and_then(|ivec| Some(Chat::from_val(ivec)))
     }
 
-    
+    pub fn register(&self, code: String, name: String) -> bool {
+        todo!();
+    }
+
+    pub fn tree(&self, t: Tree) -> sled::Tree {
+        self.sled.open_tree([t as u8]).unwrap()
+    }
 }
 
-trait BinVals 
-    where Self: Serialize + DeserializeOwned {
+trait BinVals
+where
+    Self: Serialize + DeserializeOwned,
+{
     fn into_val(&self) -> sled::IVec {
         bincode::config()
             .big_endian()
@@ -60,7 +70,6 @@ pub enum Tree {
 pub struct Revenue {
     pub corner_id: u32,
     pub date: u32,
-    pub user_id: u32,
     pub amount: u32,
     pub post_datetime: u32,
 }
@@ -68,7 +77,7 @@ pub struct Revenue {
 impl BinVals for Revenue {}
 
 impl Revenue {
-    fn key(date: u32, corner_id: u32) -> sled::IVec{
+    fn key(date: u32, corner_id: u32) -> sled::IVec {
         let mut key: [u8; 8] = [0u8; 8];
         let mut v: [u8; 4] = date.to_be_bytes();
         key[0] = v[0];
@@ -83,31 +92,34 @@ impl Revenue {
         (&key).into()
     }
 
-    fn into_key(&self) -> sled::IVec { 
+    fn into_key(&self) -> sled::IVec {
         Self::key(self.date, self.corner_id)
     }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct Chat {
-    corner_id: u32,
-    step: ChatStep,
-    user_name: String,
-    is_active: bool,
+    pub corner_id: u32,
+    // state: ChatState,
+    pub name: String,
+    pub is_active: bool,
 }
 
 impl BinVals for Chat {}
 
 impl Chat {
-    fn key(chat_id: u64) -> sled::IVec {
+    fn key(chat_id: i64) -> sled::IVec {
         (&chat_id.to_be_bytes()).into()
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub enum ChatStep {
-    Start,
-}
+// #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+// pub enum ChatState {
+//     Unauthorized,
+//     Deactive,
+//     Help,
+
+// }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Corner {
@@ -132,8 +144,7 @@ impl Corner {
 pub struct InviteCode {
     code: String,
     corner_id: u32,
-    admin_id: u32,
-    gen_date: u32,
+    expire: u32,
 }
 
 impl BinVals for InviteCode {}
@@ -145,6 +156,15 @@ impl InviteCode {
 
     fn into_key(&self) -> sled::IVec {
         Self::key(self.code.as_str())
+    }
+}
+
+//запилить автоматическое удаление инвайтов
+async fn remove_expired_invites() {
+    let mut interval_day = tokio::time::interval(std::time::Duration::from_secs(86400));
+    loop {
+        let now = interval_day.tick().await;
+        println!("Renew sitemaps for each day. (Time now = {:?})", now);
     }
 }
 
@@ -162,26 +182,16 @@ mod tests {
     #[test]
     fn insert_get() {
         let db = DataBase::open();
-        let tree = db.tree(Tree::Revenues).unwrap();
+        let tree = db.tree(Tree::Revenues);
         let mut rng = rand::thread_rng();
-        // let mut start = SystemTime::now();
-        // let mut time = SystemTime::now();
         let rev = Revenue {
-            // corner_id: rng.next_u32(),
             corner_id: rng.next_u32(),
             date: rng.next_u32(),
-            user_id: rng.next_u32(),
             amount: rng.next_u32(),
             post_datetime: rng.next_u32(),
         };
         let key = rev.into_key();
         tree.insert(&key, rev.into_val()).unwrap();
         assert_eq!(Revenue::from_val(tree.get(&key).unwrap().unwrap()), rev);
-        // eprintln!("Total revenues: {}", tree.iter().count());
-        // eprintln!("Total time {} secs", start.elapsed().unwrap().as_secs())
-        // dbg!(tree
-        //     .iter()
-        //     .collect::<sled::Result<Vec<(sled::IVec, sled::IVec)>>>()
-        //     .unwrap());
     }
 }
